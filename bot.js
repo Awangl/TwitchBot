@@ -129,7 +129,7 @@ setInterval(() => {
             console.error(`Error fetching stream data for ${streamer}:`, err);
         });
     });
-}, 6000);
+}, 60000);
 
 app.get('/twitch', (req, res) => {
     if (twitchToken) {
