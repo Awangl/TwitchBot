@@ -113,12 +113,13 @@ setInterval(() => {
                     // Стрим только что начался
                     isLive[streamer] = true;
                     let stream = res.data.data[0];
+                    let utcTime = new Date().getTime();
                     sendLiveNotification(
                         streamer,
                         stream.title,
                         stream.game_name,
                         stream.viewer_count,
-                        stream.thumbnail_url
+                        stream.thumbnail_url + '?t=' + utcTime
                     );
                 }
             } else {
