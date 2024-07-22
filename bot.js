@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
-const { Client, GatewayIntentBits, EmbedBuilder, ButtonStyle, ButtonBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ButtonStyle, ButtonBuilder, PermissionsBitField } = require('discord.js');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -56,6 +56,10 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', message => {
+    if (!message.member.permissionsIn(message.channel).has(PermissionsBitField.Flags.Administrator)) {
+        return message.channel.send('Добавлять стримеров могут только администраторы.');
+    }
+
     if (message.content.startsWith('!addstreamer')) {
         const args = message.content.split(' ');
         const streamer = args[1];
