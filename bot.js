@@ -2,7 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const fs = require('fs');
-const { Client, GatewayIntentBits, EmbedBuilder, ButtonStyle, ButtonBuilder, PermissionsBitField } = require('discord.js');
+const { Client, GatewayIntentBits, EmbedBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } = require('discord.js');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -10,9 +10,12 @@ const port = process.env.PORT || 3000;
 const twitchClientID = process.env.TWITCH_CLIENT_ID;
 const twitchSecret = process.env.TWITCH_CLIENT_SECRET;
 const discordChannelID = process.env.DISCORD_CHANNEL_ID;
-const discordRoleID = process.env.DISCORD_ROLE_ID
+const discordRoleID = process.env.DISCORD_ROLE_ID;
+const gameCategoryToTrack = 'Beat Saber';
+
 let twitchToken;
 let isLive = {};
+let currentCategory = {};
 
 const client = new Client({
     intents: [
@@ -49,6 +52,14 @@ function addStreamer(streamer) {
     }
 }
 
+function removeStreamer(streamer) {
+    const index = streamers.indexOf(streamer);
+    if (index > -1) {
+        streamers.splice(index, 1);
+        saveStreamers();
+    }
+}
+
 loadStreamers();
 
 client.on('ready', () => {
@@ -56,11 +67,10 @@ client.on('ready', () => {
 });
 
 client.on('messageCreate', message => {
-    if (!message.member.permissionsIn(message.channel).has(PermissionsBitField.Flags.Administrator)) {
-        return message.channel.send('Добавлять стримеров могут только администраторы.');
-    }
-
     if (message.content.startsWith('!addstreamer')) {
+        if (!message.member.permissionsIn(message.channel).has(PermissionsBitField.Flags.Administrator)) {
+            return message.channel.send('Добавлять и убирать стримеров могут только администраторы.');
+        }
         const args = message.content.split(' ');
         const streamer = args[1];
         if (streamer) {
@@ -68,6 +78,20 @@ client.on('messageCreate', message => {
             message.channel.send(`Streamer ${streamer} добавлен в список.`);
         } else {
             message.channel.send('Использование: !addstreamer <имя_стримера>');
+        }
+    }
+
+    if (message.content.startsWith('!removestreamer')) {
+        if (!message.member.permissionsIn(message.channel).has(PermissionsBitField.Flags.Administrator)) {
+            return message.channel.send('Добавлять и убирать стримеров могут только администраторы.');
+        }
+        const args = message.content.split(' ');
+        const streamer = args[1];
+        if (streamer) {
+            removeStreamer(streamer);
+            message.channel.send(`Streamer ${streamer} удалён из списка.`);
+        } else {
+            message.channel.send('Использование: !removestreamer <имя_стримера>');
         }
     }
 });
@@ -97,9 +121,9 @@ function sendLiveNotification(streamer, streamTitle, gameName, viewers, thumbnai
         const button = new ButtonBuilder()
             .setLabel('Watch Stream')
             .setURL(`https://twitch.tv/${streamer}`)
-            .setStyle(5);
+            .setStyle(ButtonStyle.Link);
 
-        channel.send({ embeds: [embed], components: [{type: 1, components: [button] }], content: `<@&${discordRoleID}> ${streamer} в эфире!`});
+        channel.send({ embeds: [embed], components: [{ type: 1, components: [button] }], content: `<@&${discordRoleID}> ${streamer} в эфире!` });
     }
 }
 
@@ -113,22 +137,39 @@ setInterval(() => {
         }).then(res => {
             if (res.data.data.length > 0) {
                 // Стрим активен
+                let stream = res.data.data[0];
                 if (!isLive[streamer]) {
                     // Стрим только что начался
                     isLive[streamer] = true;
-                    let stream = res.data.data[0];
-                    let utcTime = new Date().getTime();
-                    sendLiveNotification(
-                        streamer,
-                        stream.title,
-                        stream.game_name,
-                        stream.viewer_count,
-                        stream.thumbnail_url + '?t=' + utcTime
-                    );
+                    currentCategory[streamer] = stream.game_name;
+                    if (stream.game_name === gameCategoryToTrack) {
+                        let utcTime = new Date().getTime();
+                        sendLiveNotification(
+                            streamer,
+                            stream.title,
+                            stream.game_name,
+                            stream.viewer_count,
+                            stream.thumbnail_url + '?t=' + utcTime
+                        );
+                    }
+                } else if (currentCategory[streamer] !== stream.game_name) {
+                    // Категория изменилась
+                    currentCategory[streamer] = stream.game_name;
+                    if (stream.game_name === gameCategoryToTrack) {
+                        let utcTime = new Date().getTime();
+                        sendLiveNotification(
+                            streamer,
+                            stream.title,
+                            stream.game_name,
+                            stream.viewer_count,
+                            stream.thumbnail_url + '?t=' + utcTime
+                        );
+                    }
                 }
             } else {
                 // Стрим не активен
                 isLive[streamer] = false;
+                currentCategory[streamer] = null;
             }
         }).catch(err => {
             console.error(`Error fetching stream data for ${streamer}:`, err);
@@ -154,6 +195,10 @@ app.get('/discord', (req, res) => {
 
 app.get('/status', (req, res) => {
     res.status(200).json({ isLive });
+});
+
+app.get('/streamers', (req, res) => {
+    res.status(200).json({ streamers });
 });
 
 app.listen(port, () => {
